@@ -5,10 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import { Users, Settings, Receipt, QrCode, Link, Calendar, DollarSign, Waves } from "lucide-react";
+import { Users, Settings, Receipt, QrCode, Link, Calendar, DollarSign, Waves, LogOut } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { Session, User } from "@supabase/supabase-js";
 
 interface Instrutor {
   instrutor_id: number;
@@ -34,6 +35,8 @@ interface Aluno {
 const DashboardPage = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [instrutores, setInstrutores] = useState<Instrutor[]>([]);
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,25 +46,51 @@ const DashboardPage = () => {
   const [dataVencimento, setDataVencimento] = useState("");
 
   useEffect(() => {
-    carregarDados();
-  }, []);
+    // Check authentication
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (!session) {
+        navigate('/auth');
+      } else {
+        carregarDados();
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (!session) {
+          navigate('/auth');
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const carregarDados = async () => {
+    if (!user) return;
+    
     setLoading(true);
     try {
-      // Carregar instrutores
+      // Carregar instrutores do usuário logado
       const { data: instrutoresData, error: instrutoresError } = await supabase
         .from('praiativa_instrutores')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (instrutoresError) throw instrutoresError;
       setInstrutores(instrutoresData || []);
 
-      // Carregar alunos
+      // Carregar alunos do usuário logado
       const { data: alunosData, error: alunosError } = await supabase
         .from('praiativa_alunos')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (alunosError) throw alunosError;
@@ -125,24 +154,36 @@ const DashboardPage = () => {
     }
 
     try {
-      // Simular geração de código PIX
-      const codigoPix = `PIX${Date.now()}${Math.random().toString(36).substr(2, 9)}`;
-      const linkPagamento = `https://praiativa.com/pagar/${codigoPix}`;
-
-      toast({
-        title: "Cobrança Gerada!",
-        description: (
-          <div className="space-y-2">
-            <p><strong>Código PIX:</strong> {codigoPix}</p>
-            <p><strong>Link:</strong> <a href={linkPagamento} className="text-blue-500 underline" target="_blank" rel="noopener noreferrer">{linkPagamento}</a></p>
-            <p><strong>Valor:</strong> R$ {aluno.valor}</p>
-            <p><strong>Vencimento:</strong> {dataVencimento}</p>
-          </div>
-        )
+      // Criar sessão de pagamento Stripe
+      const valorEmCentavos = Math.round(parseFloat(aluno.valor) * 100);
+      
+      const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke('create-payment', {
+        body: {
+          amount: valorEmCentavos,
+          currency: 'brl',
+          description: `${aluno.atividade} - ${aluno.nome}`,
+          instructor_id: instrutorSelecionado?.instrutor_id,
+          students: [aluno]
+        }
       });
 
-      // Aqui você pode integrar com um sistema real de PIX ou gateway de pagamento
-      // Por exemplo: Mercado Pago, PagSeguro, etc.
+      if (checkoutError) throw checkoutError;
+
+      if (checkoutData?.url) {
+        // Abrir link do Stripe em nova aba
+        window.open(checkoutData.url, '_blank');
+        
+        toast({
+          title: "Link de Pagamento Gerado!",
+          description: (
+            <div className="space-y-2">
+              <p><strong>Valor:</strong> R$ {aluno.valor}</p>
+              <p><strong>Vencimento:</strong> {dataVencimento}</p>
+              <p>Link de pagamento aberto em nova aba</p>
+            </div>
+          )
+        });
+      }
 
     } catch (error) {
       console.error('Erro ao gerar cobrança:', error);
@@ -155,8 +196,18 @@ const DashboardPage = () => {
   };
 
   const alunosDoInstrutor = instrutorSelecionado 
-    ? alunos.filter(aluno => aluno.contato_instrutor === parseInt(instrutorSelecionado.contato))
+    ? alunos.filter(aluno => aluno.contato_instrutor === instrutorSelecionado.instrutor_id)
     : [];
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate('/');
+  };
+
+  // Show loading or redirect if not authenticated
+  if (!session || !user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-background p-4">
@@ -187,6 +238,13 @@ const DashboardPage = () => {
             variant="outline"
           >
             Voltar ao Início
+          </Button>
+          <Button 
+            onClick={handleLogout} 
+            variant="destructive"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Sair
           </Button>
         </div>
 

@@ -30,12 +30,12 @@ const Index = () => {
               Novo Cadastro
             </Button>
             <Button 
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate('/auth')}
               size="lg" 
               variant="secondary"
               className="text-lg px-8 py-6"
             >
-              Ver Dashboard
+              Login / Cadastro
             </Button>
           </div>
         </div>
@@ -102,12 +102,12 @@ const Index = () => {
                   Novo Cadastro
                 </Button>
                 <Button 
-                  onClick={() => navigate('/dashboard')}
+                  onClick={() => navigate('/auth')}
                   size="lg" 
                   variant="secondary"
                   className="text-lg px-8 py-4"
                 >
-                  Dashboard
+                  Login / Cadastro
                 </Button>
               </div>
             </CardContent>

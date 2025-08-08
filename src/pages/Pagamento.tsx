@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Users, User, CreditCard, CheckCircle, Waves } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 
 interface Instrutor {
   nome: string;
@@ -28,6 +29,7 @@ interface Aluno {
 
 const PagamentoPage = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [etapa, setEtapa] = useState<'instrutor' | 'alunos' | 'pagamento' | 'sucesso'>('instrutor');
   const [instrutor, setInstrutor] = useState<Instrutor>({
     nome: '',
@@ -76,6 +78,18 @@ const PagamentoPage = () => {
   const processarPagamento = async () => {
     setLoading(true);
     try {
+      // Verificar se usuário está logado
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        toast({
+          title: "Erro",
+          description: "Você precisa estar logado para continuar",
+          variant: "destructive"
+        });
+        navigate('/auth');
+        return;
+      }
+
       // Salvar instrutor no banco
       const { data: instrutorData, error: instrutorError } = await supabase
         .from('praiativa_instrutores')
@@ -85,14 +99,15 @@ const PagamentoPage = () => {
           atividade: instrutor.atividade,
           valor: instrutor.valor,
           dia_horario: instrutor.frequencia,
-          localizacao: 'A definir'
+          localizacao: 'A definir',
+          user_id: session.user.id
         })
         .select()
         .single();
 
       if (instrutorError) throw instrutorError;
 
-      // Salvar alunos no banco
+      // Salvar alunos no banco com o valor do instrutor
       for (const aluno of alunos) {
         const { error: alunoError } = await supabase
           .from('praiativa_alunos')
@@ -100,16 +115,18 @@ const PagamentoPage = () => {
             nome: aluno.nome,
             contato: aluno.contato,
             atividade: aluno.atividade,
-            valor: aluno.valor,
-            contato_instrutor: parseInt(instrutor.contato),
-            validade: 'A definir'
+            valor: instrutor.valor, // Usar valor do instrutor
+            contato_instrutor: instrutorData.instrutor_id,
+            validade: 'A definir',
+            user_id: session.user.id
           });
 
         if (alunoError) throw alunoError;
       }
 
-      // Criar sessão de pagamento Stripe
-      const valorTotal = alunos.reduce((total, aluno) => total + parseFloat(aluno.valor || '0'), 0);
+      // Criar sessão de pagamento Stripe usando valor do instrutor
+      const valorPorAluno = parseFloat(instrutor.valor || '0');
+      const valorTotal = alunos.length * valorPorAluno;
       
       const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke('create-payment', {
         body: {
@@ -155,7 +172,7 @@ const PagamentoPage = () => {
         nome: '',
         contato: '',
         atividade: instrutor.atividade,
-        valor: instrutor.valor,
+        valor: instrutor.valor, // Manter valor do instrutor
         dataEmissao: '',
         dataVencimento: ''
       });
@@ -349,9 +366,13 @@ const PagamentoPage = () => {
                     <Input
                       id="valor-aluno"
                       type="number"
-                      value={alunoAtual.valor || instrutor.valor}
-                      onChange={(e) => setAlunoAtual({...alunoAtual, valor: e.target.value})}
+                      value={instrutor.valor}
+                      disabled
+                      className="bg-muted"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      O valor é igual ao cadastrado pelo instrutor
+                    </p>
                   </div>
                 </div>
 
@@ -395,7 +416,7 @@ const PagamentoPage = () => {
                         <div>
                           <p className="font-medium">{aluno.nome}</p>
                           <p className="text-sm text-muted-foreground">{aluno.contato}</p>
-                          <p className="text-sm text-muted-foreground">{aluno.atividade} - R$ {aluno.valor}</p>
+                          <p className="text-sm text-muted-foreground">{aluno.atividade} - R$ {instrutor.valor}</p>
                         </div>
                         <Button
                           variant="destructive"
@@ -411,7 +432,7 @@ const PagamentoPage = () => {
                   <Separator className="my-4" />
                   
                   <div className="flex justify-between items-center">
-                    <span className="text-lg font-semibold">Total: R$ {alunos.reduce((total, aluno) => total + parseFloat(aluno.valor || '0'), 0).toFixed(2)}</span>
+                    <span className="text-lg font-semibold">Total: R$ {(alunos.length * parseFloat(instrutor.valor || '0')).toFixed(2)}</span>
                   </div>
                 </CardContent>
               </Card>
