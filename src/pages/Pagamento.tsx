@@ -22,6 +22,8 @@ interface Aluno {
   contato: string;
   atividade: string;
   valor: string;
+  dataEmissao?: string;
+  dataVencimento?: string;
 }
 
 const PagamentoPage = () => {
@@ -39,7 +41,9 @@ const PagamentoPage = () => {
     nome: '',
     contato: '',
     atividade: '',
-    valor: ''
+    valor: '',
+    dataEmissao: '',
+    dataVencimento: ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -58,7 +62,9 @@ const PagamentoPage = () => {
       nome: '',
       contato: '',
       atividade: instrutor.atividade,
-      valor: instrutor.valor
+      valor: instrutor.valor,
+      dataEmissao: '',
+      dataVencimento: ''
     });
 
     toast({
@@ -149,7 +155,9 @@ const PagamentoPage = () => {
         nome: '',
         contato: '',
         atividade: instrutor.atividade,
-        valor: instrutor.valor
+        valor: instrutor.valor,
+        dataEmissao: '',
+        dataVencimento: ''
       });
       setEtapa('alunos');
     } else if (etapa === 'alunos') {
@@ -343,6 +351,27 @@ const PagamentoPage = () => {
                       type="number"
                       value={alunoAtual.valor || instrutor.valor}
                       onChange={(e) => setAlunoAtual({...alunoAtual, valor: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="data-emissao">Data de Emissão</Label>
+                    <Input
+                      id="data-emissao"
+                      type="date"
+                      value={alunoAtual.dataEmissao}
+                      onChange={(e) => setAlunoAtual({...alunoAtual, dataEmissao: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="data-vencimento">Data de Vencimento</Label>
+                    <Input
+                      id="data-vencimento"
+                      type="date"
+                      value={alunoAtual.dataVencimento}
+                      onChange={(e) => setAlunoAtual({...alunoAtual, dataVencimento: e.target.value})}
                     />
                   </div>
                 </div>

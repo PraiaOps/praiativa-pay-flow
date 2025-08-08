@@ -21,13 +21,23 @@ const Index = () => {
             Conectando instrutores e alunos nas mais belas praias. 
             Cadastre-se e comece a ensinar atividades aquáticas hoje mesmo!
           </p>
-          <Button 
-            onClick={() => navigate('/pagamento')}
-            size="lg" 
-            className="gradient-primary text-lg px-8 py-6 shadow-glow"
-          >
-            Cadastre-se Gratuitamente
-          </Button>
+          <div className="flex gap-4 justify-center">
+            <Button 
+              onClick={() => navigate('/pagamento')}
+              size="lg" 
+              className="gradient-primary text-lg px-8 py-6 shadow-glow"
+            >
+              Novo Cadastro
+            </Button>
+            <Button 
+              onClick={() => navigate('/dashboard')}
+              size="lg" 
+              variant="secondary"
+              className="text-lg px-8 py-6"
+            >
+              Ver Dashboard
+            </Button>
+          </div>
         </div>
 
         {/* Features Grid */}
@@ -83,13 +93,23 @@ const Index = () => {
                 Junte-se à comunidade PraiAtiva e transforme sua paixão por esportes aquáticos em uma fonte de renda. 
                 É rápido, fácil e seguro!
               </p>
-              <Button 
-                onClick={() => navigate('/pagamento')}
-                size="lg" 
-                className="gradient-primary text-lg px-8 py-4"
-              >
-                Começar Agora
-              </Button>
+              <div className="flex gap-4 justify-center">
+                <Button 
+                  onClick={() => navigate('/pagamento')}
+                  size="lg" 
+                  className="gradient-primary text-lg px-8 py-4"
+                >
+                  Novo Cadastro
+                </Button>
+                <Button 
+                  onClick={() => navigate('/dashboard')}
+                  size="lg" 
+                  variant="secondary"
+                  className="text-lg px-8 py-4"
+                >
+                  Dashboard
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
