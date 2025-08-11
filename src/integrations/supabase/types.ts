@@ -20,69 +20,102 @@ export type Database = {
           contato: string
           contato_instrutor: number | null
           created_at: string | null
+          data_vencimento: string | null
+          email: string | null
           nome: string
+          numero_instrutor: string | null
           updated_at: string | null
           user_id: string | null
           validade: string | null
           valor: string | null
+          valor_mensalidade: number | null
+          whatsapp: string | null
         }
         Insert: {
           atividade: string
           contato: string
           contato_instrutor?: number | null
           created_at?: string | null
+          data_vencimento?: string | null
+          email?: string | null
           nome: string
+          numero_instrutor?: string | null
           updated_at?: string | null
           user_id?: string | null
           validade?: string | null
           valor?: string | null
+          valor_mensalidade?: number | null
+          whatsapp?: string | null
         }
         Update: {
           atividade?: string
           contato?: string
           contato_instrutor?: number | null
           created_at?: string | null
+          data_vencimento?: string | null
+          email?: string | null
           nome?: string
+          numero_instrutor?: string | null
           updated_at?: string | null
           user_id?: string | null
           validade?: string | null
           valor?: string | null
+          valor_mensalidade?: number | null
+          whatsapp?: string | null
         }
         Relationships: []
       }
       praiativa_instrutores: {
         Row: {
+          agencia: string | null
           atividade: string
+          banco: string | null
+          chave_pix: string | null
+          conta: string | null
           contato: string
+          cpf_cnpj: string | null
           created_at: string | null
           dia_horario: string
           instrutor_id: number
           localizacao: string
           nome: string
+          numero_instrutor: string | null
           updated_at: string | null
           user_id: string | null
           valor: string
         }
         Insert: {
+          agencia?: string | null
           atividade: string
+          banco?: string | null
+          chave_pix?: string | null
+          conta?: string | null
           contato: string
+          cpf_cnpj?: string | null
           created_at?: string | null
           dia_horario: string
           instrutor_id?: number
           localizacao: string
           nome: string
+          numero_instrutor?: string | null
           updated_at?: string | null
           user_id?: string | null
           valor: string
         }
         Update: {
+          agencia?: string | null
           atividade?: string
+          banco?: string | null
+          chave_pix?: string | null
+          conta?: string | null
           contato?: string
+          cpf_cnpj?: string | null
           created_at?: string | null
           dia_horario?: string
           instrutor_id?: number
           localizacao?: string
           nome?: string
+          numero_instrutor?: string | null
           updated_at?: string | null
           user_id?: string | null
           valor?: string

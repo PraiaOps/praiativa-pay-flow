@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import { Users, Settings, Receipt, QrCode, Link, Calendar, DollarSign, Waves, LogOut } from "lucide-react";
+import { Users, Settings, Receipt, QrCode, Link, Calendar, DollarSign, Waves, LogOut, Plus, MessageCircle, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -19,17 +19,28 @@ interface Instrutor {
   valor: string;
   dia_horario: string;
   localizacao: string;
+  numero_instrutor: string;
+  cpf_cnpj?: string;
+  banco?: string;
+  agencia?: string;
+  conta?: string;
+  chave_pix?: string;
 }
 
 interface Aluno {
+  id?: string;
   nome: string;
   contato: string;
+  email?: string;
+  whatsapp?: string;
   atividade: string;
   valor: string;
+  valor_mensalidade?: number;
   validade: string;
-  contato_instrutor: number;
-  data_emissao?: string;
   data_vencimento?: string;
+  contato_instrutor: number;
+  numero_instrutor?: string;
+  data_emissao?: string;
 }
 
 const DashboardPage = () => {
@@ -76,25 +87,33 @@ const DashboardPage = () => {
     
     setLoading(true);
     try {
-      // Carregar instrutores do usuário logado
-      const { data: instrutoresData, error: instrutoresError } = await supabase
+      // Carregar dados do instrutor logado
+      const { data: instrutorData, error: instrutorError } = await supabase
         .from('praiativa_instrutores')
         .select('*')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .single();
 
-      if (instrutoresError) throw instrutoresError;
-      setInstrutores(instrutoresData || []);
+      if (instrutorError && instrutorError.code !== 'PGRST116') throw instrutorError;
+      
+      if (instrutorData) {
+        setInstrutores([instrutorData]);
+        setInstrutorSelecionado(instrutorData);
 
-      // Carregar alunos do usuário logado
-      const { data: alunosData, error: alunosError } = await supabase
-        .from('praiativa_alunos')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        // Carregar alunos vinculados ao número do instrutor
+        const { data: alunosData, error: alunosError } = await supabase
+          .from('praiativa_alunos')
+          .select('*')
+          .eq('numero_instrutor', instrutorData.numero_instrutor)
+          .order('created_at', { ascending: false });
 
-      if (alunosError) throw alunosError;
-      setAlunos(alunosData || []);
+        if (alunosError) throw alunosError;
+        setAlunos(alunosData || []);
+      } else {
+        // Instrutor não cadastrado
+        setInstrutores([]);
+        setAlunos([]);
+      }
 
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -143,7 +162,7 @@ const DashboardPage = () => {
     }
   };
 
-  const gerarCobranca = async (aluno: Aluno) => {
+  const gerarCobranca = async (aluno: Aluno, tipoPagamento: 'pix' | 'link' | 'boleto') => {
     if (!dataEmissao || !dataVencimento) {
       toast({
         title: "Erro",
@@ -154,16 +173,19 @@ const DashboardPage = () => {
     }
 
     try {
-      // Criar sessão de pagamento Stripe
-      const valorEmCentavos = Math.round(parseFloat(aluno.valor) * 100);
+      const valorAluno = aluno.valor_mensalidade || parseFloat(aluno.valor);
+      const valorEmCentavos = Math.round(valorAluno * 100);
       
       const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke('create-payment', {
         body: {
           amount: valorEmCentavos,
           currency: 'brl',
-          description: `${aluno.atividade} - ${aluno.nome}`,
+          description: `${aluno.atividade} - ${aluno.nome} - Mensalidade`,
           instructor_id: instrutorSelecionado?.instrutor_id,
-          students: [aluno]
+          students: [aluno],
+          payment_type: tipoPagamento,
+          due_date: dataVencimento,
+          issue_date: dataEmissao
         }
       });
 
@@ -174,11 +196,13 @@ const DashboardPage = () => {
         window.open(checkoutData.url, '_blank');
         
         toast({
-          title: "Link de Pagamento Gerado!",
+          title: `${tipoPagamento.toUpperCase()} Gerado!`,
           description: (
             <div className="space-y-2">
-              <p><strong>Valor:</strong> R$ {aluno.valor}</p>
-              <p><strong>Vencimento:</strong> {dataVencimento}</p>
+              <p><strong>Aluno:</strong> {aluno.nome}</p>
+              <p><strong>Valor:</strong> R$ {valorAluno.toFixed(2)}</p>
+              <p><strong>Emissão:</strong> {new Date(dataEmissao).toLocaleDateString('pt-BR')}</p>
+              <p><strong>Vencimento:</strong> {new Date(dataVencimento).toLocaleDateString('pt-BR')}</p>
               <p>Link de pagamento aberto em nova aba</p>
             </div>
           )
@@ -196,7 +220,10 @@ const DashboardPage = () => {
   };
 
   const alunosDoInstrutor = instrutorSelecionado 
-    ? alunos.filter(aluno => aluno.contato_instrutor === instrutorSelecionado.instrutor_id)
+    ? alunos.filter(aluno => 
+        aluno.numero_instrutor === instrutorSelecionado.numero_instrutor ||
+        aluno.contato_instrutor === instrutorSelecionado.instrutor_id
+      )
     : [];
 
   const handleLogout = async () => {
@@ -221,18 +248,38 @@ const DashboardPage = () => {
             </h1>
           </div>
           <p className="text-xl text-muted-foreground">
-            Gerencie seus instrutores, alunos e cobranças
+            {instrutorSelecionado ? `Instrutor: ${instrutorSelecionado.nome} (#${instrutorSelecionado.numero_instrutor})` : 'Sistema de Gestão de Instrutores'}
           </p>
         </div>
 
         {/* Botões de navegação */}
-        <div className="flex gap-4 mb-8 justify-center">
-          <Button 
-            onClick={() => navigate('/pagamento')} 
-            className="gradient-primary"
-          >
-            Novo Cadastro
-          </Button>
+        <div className="flex flex-wrap gap-4 mb-8 justify-center">
+          {!instrutorSelecionado ? (
+            <Button 
+              onClick={() => navigate('/instructor-registration')} 
+              className="gradient-primary"
+            >
+              <UserPlus className="h-4 w-4 mr-2" />
+              Cadastrar Instrutor
+            </Button>
+          ) : (
+            <>
+              <Button 
+                onClick={() => navigate('/student-management')} 
+                className="gradient-primary"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Gerenciar Alunos
+              </Button>
+              <Button 
+                onClick={() => window.open('https://wa.me/5521991732847', '_blank')} 
+                variant="secondary"
+              >
+                <MessageCircle className="h-4 w-4 mr-2" />
+                WhatsApp
+              </Button>
+            </>
+          )}
           <Button 
             onClick={() => navigate('/')} 
             variant="outline"
@@ -248,110 +295,163 @@ const DashboardPage = () => {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Seção de Instrutores */}
-          <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-primary" />
-                Instrutores Cadastrados ({instrutores.length})
-              </CardTitle>
-              <CardDescription>
-                Clique em um instrutor para ver seus alunos
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {instrutores.map((instrutor) => (
-                  <div 
-                    key={instrutor.instrutor_id} 
-                    className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                      instrutorSelecionado?.instrutor_id === instrutor.instrutor_id 
-                        ? 'bg-primary/10 border-primary' 
-                        : 'hover:bg-muted'
-                    }`}
-                    onClick={() => setInstrutorSelecionado(instrutor)}
+        {/* Mensagem se instrutor não cadastrado */}
+        {!instrutorSelecionado && (
+          <Card className="shadow-card mb-8">
+            <CardContent className="text-center py-12">
+              <UserPlus className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-xl font-semibold mb-2">Bem-vindo ao PraiAtiva!</h3>
+              <p className="text-muted-foreground mb-6">
+                Para começar a gerenciar seus alunos e gerar cobranças, você precisa se cadastrar como instrutor.
+              </p>
+              <Button 
+                onClick={() => navigate('/instructor-registration')} 
+                className="gradient-primary"
+                size="lg"
+              >
+                <UserPlus className="h-5 w-5 mr-2" />
+                Fazer Cadastro de Instrutor
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {instrutorSelecionado && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Dados do Instrutor */}
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Meus Dados
+                </CardTitle>
+                <CardDescription>
+                  Informações do instrutor logado
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Nome</p>
+                      <p className="font-semibold">{instrutorSelecionado.nome}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Número</p>
+                      <p className="font-semibold">#{instrutorSelecionado.numero_instrutor}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Atividade</p>
+                      <p className="font-semibold">{instrutorSelecionado.atividade}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Valor Mensalidade</p>
+                      <p className="font-semibold">R$ {instrutorSelecionado.valor}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Horários</p>
+                    <p className="font-semibold">{instrutorSelecionado.dia_horario}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Localização</p>
+                    <p className="font-semibold">{instrutorSelecionado.localizacao}</p>
+                  </div>
+                  {instrutorSelecionado.chave_pix && (
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Chave PIX</p>
+                      <p className="font-mono text-sm bg-muted p-2 rounded">{instrutorSelecionado.chave_pix}</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Seção de Configurações de Cobrança */}
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5 text-primary" />
+                  Configurações de Cobrança
+                </CardTitle>
+                <CardDescription>
+                  Configure valores e datas de cobrança
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="valor-padrao">Novo Valor Padrão (R$)</Label>
+                    <Input
+                      id="valor-padrao"
+                      type="number"
+                      step="0.01"
+                      placeholder="0,00"
+                      value={valorPadrao}
+                      onChange={(e) => setValorPadrao(e.target.value)}
+                    />
+                  </div>
+
+                  <Button 
+                    onClick={atualizarValorPadrao}
+                    className="w-full"
+                    variant="secondary"
                   >
-                    <h3 className="font-semibold">{instrutor.nome}</h3>
-                    <p className="text-sm text-muted-foreground">{instrutor.atividade}</p>
-                    <p className="text-sm text-muted-foreground">Valor: R$ {instrutor.valor}</p>
-                    <p className="text-sm text-muted-foreground">Contato: {instrutor.contato}</p>
+                    <DollarSign className="h-4 w-4 mr-2" />
+                    Atualizar Valor Padrão
+                  </Button>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <h3 className="font-semibold">Datas para Cobrança</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="data-emissao">Data de Emissão</Label>
+                      <Input
+                        id="data-emissao"
+                        type="date"
+                        value={dataEmissao}
+                        onChange={(e) => setDataEmissao(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="data-vencimento">Data de Vencimento</Label>
+                      <Input
+                        id="data-vencimento"
+                        type="date"
+                        value={dataVencimento}
+                        onChange={(e) => setDataVencimento(e.target.value)}
+                      />
+                    </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Seção de Configurações */}
-          <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="h-5 w-5 text-primary" />
-                Configurações
-              </CardTitle>
-              <CardDescription>
-                Configure valores padrão e datas de cobrança
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {instrutorSelecionado && (
-                <div className="p-4 bg-muted rounded-lg">
-                  <p className="font-medium mb-2">Instrutor Selecionado:</p>
-                  <p className="text-sm">{instrutorSelecionado.nome}</p>
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="valor-padrao">Novo Valor Padrão (R$)</Label>
-                  <Input
-                    id="valor-padrao"
-                    type="number"
-                    placeholder="0,00"
-                    value={valorPadrao}
-                    onChange={(e) => setValorPadrao(e.target.value)}
-                  />
                 </div>
 
-                <Button 
-                  onClick={atualizarValorPadrao}
-                  disabled={!instrutorSelecionado}
-                  className="w-full"
-                  variant="secondary"
-                >
-                  <DollarSign className="h-4 w-4 mr-2" />
-                  Atualizar Valor Padrão
-                </Button>
-              </div>
+                <Separator />
 
-              <Separator />
-
-              <div className="space-y-4">
-                <h3 className="font-semibold">Datas para Cobrança</h3>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <h3 className="font-semibold">WhatsApp e Chatbot</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Links de comunicação direta
+                  </p>
                   <div className="space-y-2">
-                    <Label htmlFor="data-emissao">Data de Emissão</Label>
-                    <Input
-                      id="data-emissao"
-                      type="date"
-                      value={dataEmissao}
-                      onChange={(e) => setDataEmissao(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="data-vencimento">Data de Vencimento</Label>
-                    <Input
-                      id="data-vencimento"
-                      type="date"
-                      value={dataVencimento}
-                      onChange={(e) => setDataVencimento(e.target.value)}
-                    />
+                    <Button 
+                      onClick={() => window.open('https://wa.me/5521991732847', '_blank')}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      Conversar no WhatsApp
+                    </Button>
                   </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Seção de Alunos */}
         {instrutorSelecionado && (
@@ -359,59 +459,110 @@ const DashboardPage = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Receipt className="h-5 w-5 text-primary" />
-                Alunos de {instrutorSelecionado.nome} ({alunosDoInstrutor.length})
+                Meus Alunos ({alunosDoInstrutor.length})
               </CardTitle>
               <CardDescription>
-                Gerencie as cobranças dos alunos
+                Gerencie as cobranças dos seus alunos
               </CardDescription>
             </CardHeader>
             <CardContent>
               {alunosDoInstrutor.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nome</TableHead>
-                      <TableHead>Contato</TableHead>
-                      <TableHead>Atividade</TableHead>
-                      <TableHead>Valor</TableHead>
-                      <TableHead>Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {alunosDoInstrutor.map((aluno, index) => (
-                      <TableRow key={index}>
-                        <TableCell className="font-medium">{aluno.nome}</TableCell>
-                        <TableCell>{aluno.contato}</TableCell>
-                        <TableCell>{aluno.atividade}</TableCell>
-                        <TableCell>R$ {aluno.valor}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => gerarCobranca(aluno)}
-                              disabled={!dataEmissao || !dataVencimento}
-                            >
-                              <QrCode className="h-4 w-4 mr-1" />
-                              PIX
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => gerarCobranca(aluno)}
-                              disabled={!dataEmissao || !dataVencimento}
-                            >
-                              <Link className="h-4 w-4 mr-1" />
-                              Link
-                            </Button>
-                          </div>
-                        </TableCell>
+                <div className="space-y-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nome</TableHead>
+                        <TableHead>Contato</TableHead>
+                        <TableHead>E-mail</TableHead>
+                        <TableHead>Mensalidade</TableHead>
+                        <TableHead>Vencimento</TableHead>
+                        <TableHead>Ações</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {alunosDoInstrutor.map((aluno, index) => (
+                        <TableRow key={aluno.id || index}>
+                          <TableCell className="font-medium">{aluno.nome}</TableCell>
+                          <TableCell>
+                            {aluno.whatsapp ? (
+                              <a 
+                                href={`https://wa.me/55${aluno.whatsapp.replace(/\D/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline"
+                              >
+                                {aluno.whatsapp}
+                              </a>
+                            ) : (
+                              aluno.contato
+                            )}
+                          </TableCell>
+                          <TableCell>{aluno.email || '-'}</TableCell>
+                          <TableCell>
+                            R$ {(aluno.valor_mensalidade || parseFloat(aluno.valor) || 0).toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            {aluno.data_vencimento ? 
+                              new Date(aluno.data_vencimento).toLocaleDateString('pt-BR') : 
+                              (aluno.validade !== 'A definir' ? aluno.validade : '-')
+                            }
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              <Button
+                                size="sm"
+                                onClick={() => gerarCobranca(aluno, 'pix')}
+                                disabled={!dataEmissao || !dataVencimento}
+                              >
+                                <QrCode className="h-3 w-3 mr-1" />
+                                PIX
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => gerarCobranca(aluno, 'link')}
+                                disabled={!dataEmissao || !dataVencimento}
+                              >
+                                <Link className="h-3 w-3 mr-1" />
+                                Link
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => gerarCobranca(aluno, 'boleto')}
+                                disabled={!dataEmissao || !dataVencimento}
+                              >
+                                <Receipt className="h-3 w-3 mr-1" />
+                                Boleto
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  
+                  <div className="text-center pt-4">
+                    <Button 
+                      onClick={() => navigate('/student-management')} 
+                      variant="outline"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Gerenciar Alunos
+                    </Button>
+                  </div>
+                </div>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
-                  Nenhum aluno cadastrado para este instrutor.
+                  <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="mb-2">Nenhum aluno cadastrado ainda.</p>
+                  <Button 
+                    onClick={() => navigate('/student-management')} 
+                    className="gradient-primary"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Cadastrar Primeiro Aluno
+                  </Button>
                 </div>
               )}
             </CardContent>
