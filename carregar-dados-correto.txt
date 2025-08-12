@@ -1,0 +1,157 @@
+const carregarDados = async () => {
+  if (!user) {
+    console.log('Usuário não encontrado');
+    return;
+  }
+  
+  console.log('=== CARREGAMENTO SIMPLIFICADO ESTILO N8N ===');
+  console.log('User ID:', user.id);
+  console.log('User email:', user.email);
+  
+  setLoading(true);
+  try {
+    // PADRÃO N8N: Buscar pelo Contato (WhatsApp) - Número do Instrutor
+    // Usar número 21992370808 diretamente, SEM depender de user_id
+    
+    const numeroInstrutor = '21992370808'; // Número fixo conforme fluxo n8n
+    console.log(`🎯 BUSCANDO INSTRUTOR por contato = "${numeroInstrutor}"`);
+    
+    // 1. BUSCAR INSTRUTORES por contato OU numero_instrutor
+    const { data: instrutoresPorContato } = await supabase
+      .from('praiativa_instrutores')
+      .select('*')
+      .eq('contato', numeroInstrutor);
+    
+    const { data: instrutoresPorNumero } = await supabase
+      .from('praiativa_instrutores')
+      .select('*')
+      .eq('numero_instrutor', numeroInstrutor);
+    
+    console.log(`📊 Instrutores encontrados por contato (${numeroInstrutor}):`, instrutoresPorContato?.length || 0);
+    console.log(`📊 Instrutores encontrados por numero_instrutor (${numeroInstrutor}):`, instrutoresPorNumero?.length || 0);
+    
+    // Combinar resultados e remover duplicatas
+    const todosInstrutores = [
+      ...(instrutoresPorContato || []),
+      ...(instrutoresPorNumero || [])
+    ];
+    
+    const instrutoresUnicos = todosInstrutores.filter((inst, index, arr) => 
+      arr.findIndex(i => i.instrutor_id === inst.instrutor_id) === index
+    );
+    
+    console.log(`✅ Total de instrutores únicos encontrados: ${instrutoresUnicos.length}`);
+    console.log('Detalhes dos instrutores:', instrutoresUnicos);
+    
+    if (instrutoresUnicos.length > 0) {
+      setAtividades(instrutoresUnicos);
+      setInstrutor(instrutoresUnicos[0]);
+      setNumeroDetectado(numeroInstrutor);
+      
+      // 2. BUSCAR ALUNOS seguindo padrão N8N
+      console.log(`🎯 BUSCANDO ALUNOS por contato_instrutor = "${numeroInstrutor}"`);
+      
+      let todosAlunos = [];
+      
+      // Buscar alunos por contato_instrutor = número do instrutor (como STRING)
+      const { data: alunosPorContato } = await supabase
+        .from('praiativa_alunos')
+        .select('*')
+        .eq('contato_instrutor', numeroInstrutor as any); // Cast porque campo é TEXT
+      
+      if (alunosPorContato && alunosPorContato.length > 0) {
+        console.log(`✅ Encontrou ${alunosPorContato.length} alunos por contato_instrutor = "${numeroInstrutor}"`);
+        todosAlunos.push(...alunosPorContato);
+      }
+      
+      // TAMBÉM buscar por contato_instrutor = IDs dos instrutores (convertidos para string)
+      const idsInstrutor = instrutoresUnicos.map(inst => String(inst.instrutor_id));
+      console.log('🔢 IDs dos instrutores (como string):', idsInstrutor);
+      
+      const { data: alunosPorIds } = await supabase
+        .from('praiativa_alunos')
+        .select('*')
+        .in('contato_instrutor', idsInstrutor as any); // Cast porque campo é TEXT
+      
+      if (alunosPorIds && alunosPorIds.length > 0) {
+        console.log(`✅ Encontrou ${alunosPorIds.length} alunos por contato_instrutor (IDs)`);
+        todosAlunos.push(...alunosPorIds);
+      }
+      
+      // Remover duplicatas dos alunos
+      const alunosUnicos = todosAlunos.filter((aluno, index, arr) => 
+        arr.findIndex(a => 
+          a.nome === aluno.nome && 
+          a.whatsapp === aluno.whatsapp && 
+          a.created_at === aluno.created_at
+        ) === index
+      );
+      
+      console.log(`✅ Total de alunos únicos encontrados: ${alunosUnicos.length}`);
+      console.log('Detalhes dos alunos:', alunosUnicos);
+      
+      setAlunos(alunosUnicos);
+      
+      // DEBUG: Mostrar todos os dados do banco para comparação
+      console.log('=== DEBUG: VERIFICAÇÃO GERAL DO BANCO ===');
+      const { data: todasAtividades } = await supabase
+        .from('praiativa_instrutores')
+        .select('*');
+      const { data: todosAlunosDB } = await supabase
+        .from('praiativa_alunos')
+        .select('*');
+      
+      console.log(`📊 TOTAL no banco - Instrutores: ${todasAtividades?.length || 0}, Alunos: ${todosAlunosDB?.length || 0}`);
+      
+      // Análise específica para o número 21992370808
+      const instrutoresComNumero = todasAtividades?.filter(inst => 
+        inst.contato === numeroInstrutor || inst.numero_instrutor === numeroInstrutor
+      );
+      const alunosComNumero = todosAlunosDB?.filter(aluno => 
+        aluno.contato_instrutor === numeroInstrutor
+      );
+      
+      console.log(`📋 Análise para ${numeroInstrutor}:`);
+      console.log(`   Instrutores com este número: ${instrutoresComNumero?.length || 0}`);
+      console.log(`   Alunos com este contato_instrutor: ${alunosComNumero?.length || 0}`);
+      
+      if (instrutoresComNumero?.length !== instrutoresUnicos.length) {
+        console.log('⚠️ DIVERGÊNCIA: Instrutores encontrados na busca vs filtro manual');
+      }
+      if (alunosComNumero?.length !== alunosUnicos.length) {
+        console.log('⚠️ DIVERGÊNCIA: Alunos encontrados na busca vs filtro manual');
+      }
+      
+    } else {
+      console.log('❌ NENHUM INSTRUTOR ENCONTRADO');
+      setInstrutor(null);
+      setAtividades([]);
+      setAlunos([]);
+      setNumeroDetectado(null);
+      
+      // DEBUG: Mostrar todos os contatos disponíveis no banco
+      const { data: todasAtividades } = await supabase
+        .from('praiativa_instrutores')
+        .select('contato, numero_instrutor, nome, atividade');
+      
+      const contatos = [...new Set(todasAtividades?.map(a => a.contato).filter(Boolean))];
+      const numerosInstrutor = [...new Set(todasAtividades?.map(a => a.numero_instrutor).filter(Boolean))];
+      
+      console.log('📋 TODOS os contatos no banco:', contatos);
+      console.log('📋 TODOS os numero_instrutor no banco:', numerosInstrutor);
+      console.log(`🔍 O número "${numeroInstrutor}" existe no banco?`, 
+        contatos.includes(numeroInstrutor) || numerosInstrutor.includes(numeroInstrutor)
+      );
+    }
+    
+  } catch (error) {
+    console.error('=== ERRO NO CARREGAMENTO ===', error);
+    toast({
+      title: "Erro",
+      description: "Erro ao carregar dados do dashboard",
+      variant: "destructive"
+    });
+  } finally {
+    setLoading(false);
+  }
+};
