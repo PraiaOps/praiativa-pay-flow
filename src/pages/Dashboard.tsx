@@ -11,6 +11,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -137,7 +144,7 @@ const DashboardPage = () => {
     whatsapp: "",
     valor_mensalidade: 0,
     data_vencimento: "",
-    atividade: "Atividades Aquáticas",
+    atividade: "",
     valor: "0",
     validade: "",
     contato: "",
@@ -433,7 +440,7 @@ const DashboardPage = () => {
             const { data } = await supabase
               .from("praiativa_alunos")
               .select("*")
-              .eq("contato_instrutor", numero);
+              .eq("contato_instrutor", parseInt(numero));
 
             if (data && data.length > 0) {
               console.log(
@@ -454,7 +461,7 @@ const DashboardPage = () => {
               const { data } = await supabase
                 .from("praiativa_alunos")
                 .select("*")
-                .eq("contato_instrutor", numeroLimpo);
+                .eq("contato_instrutor", parseInt(numeroLimpo));
 
               if (data && data.length > 0) {
                 console.log(
@@ -547,7 +554,7 @@ const DashboardPage = () => {
         );
         const alunos21992370808 = todosAlunosDB?.filter(
           (a) =>
-            a.contato_instrutor === "21992370808" ||
+            a.contato_instrutor === 21992370808 ||
             a.numero_instrutor === "21992370808" ||
             a.contato_instrutor === 21992370808 ||
             String(a.contato_instrutor) === "21992370808"
@@ -600,11 +607,12 @@ const DashboardPage = () => {
       !instrutor ||
       !newStudent.nome ||
       !newStudent.whatsapp ||
-      !newStudent.valor_mensalidade
+      !newStudent.valor_mensalidade ||
+      !newStudent.atividade
     ) {
       toast({
         title: "Erro",
-        description: "Preencha todos os campos obrigatórios",
+        description: "Preencha todos os campos obrigatórios (nome, WhatsApp, atividade e valor da mensalidade)",
         variant: "destructive",
       });
       return;
@@ -620,7 +628,7 @@ const DashboardPage = () => {
         valor_mensalidade: newStudent.valor_mensalidade,
         data_vencimento: newStudent.data_vencimento,
         numero_instrutor: instrutor.numero_instrutor,
-        atividade: newStudent.atividade || "Atividades Aquáticas",
+        atividade: newStudent.atividade,
         valor: newStudent.valor_mensalidade?.toString() || "0",
         validade: newStudent.data_vencimento || "",
         contato: newStudent.whatsapp || "",
@@ -640,7 +648,7 @@ const DashboardPage = () => {
         whatsapp: "",
         valor_mensalidade: 0,
         data_vencimento: "",
-        atividade: "Atividades Aquáticas",
+        atividade: "",
         valor: "0",
         validade: "",
         contato: "",
@@ -761,6 +769,18 @@ const DashboardPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getActivityBadgeColor = (activity: string) => {
+    const colors = {
+      "Surf": "bg-blue-50 text-blue-700 ring-blue-700/10",
+      "Stand Up Paddle": "bg-green-50 text-green-700 ring-green-700/10",
+      "Natação": "bg-cyan-50 text-cyan-700 ring-cyan-700/10",
+      "Atividades Aquáticas": "bg-teal-50 text-teal-700 ring-teal-700/10",
+      "Windsurf": "bg-purple-50 text-purple-700 ring-purple-700/10",
+      "Kitesurf": "bg-orange-50 text-orange-700 ring-orange-700/10",
+    };
+    return colors[activity as keyof typeof colors] || "bg-gray-50 text-gray-700 ring-gray-700/10";
   };
 
   const generatePaymentLink = async (aluno: Aluno) => {
@@ -1622,6 +1642,40 @@ const DashboardPage = () => {
                       />
                     </div>
                     <div className="space-y-2">
+                      <Label htmlFor="student_activity">Atividade *</Label>
+                      <Select
+                        value={newStudent.atividade}
+                        onValueChange={(value) =>
+                          setNewStudent({
+                            ...newStudent,
+                            atividade: value,
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione uma atividade" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {atividades.length > 0 ? (
+                            atividades.map((atividade) => (
+                              <SelectItem key={atividade.instrutor_id} value={atividade.atividade}>
+                                {atividade.atividade}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <>
+                              <SelectItem value="Surf">Surf</SelectItem>
+                              <SelectItem value="Stand Up Paddle">Stand Up Paddle</SelectItem>
+                              <SelectItem value="Natação">Natação</SelectItem>
+                              <SelectItem value="Atividades Aquáticas">Atividades Aquáticas</SelectItem>
+                              <SelectItem value="Windsurf">Windsurf</SelectItem>
+                              <SelectItem value="Kitesurf">Kitesurf</SelectItem>
+                            </>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
                       <Label htmlFor="student_monthly_fee">
                         Valor da Mensalidade *
                       </Label>
@@ -1960,6 +2014,7 @@ const DashboardPage = () => {
                     <TableHead>Nome</TableHead>
                     <TableHead>E-mail</TableHead>
                     <TableHead>WhatsApp</TableHead>
+                    <TableHead>Atividade</TableHead>
                     <TableHead>Mensalidade</TableHead>
                     <TableHead>Vencimento</TableHead>
                     <TableHead>Ações</TableHead>
@@ -1973,6 +2028,12 @@ const DashboardPage = () => {
                       </TableCell>
                       <TableCell>{aluno.email || "-"}</TableCell>
                       <TableCell>{aluno.whatsapp}</TableCell>
+                      <TableCell>
+                        <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${getActivityBadgeColor(aluno.atividade)}`}>
+                          <Waves className="h-3 w-3" />
+                          {aluno.atividade || "Não informado"}
+                        </span>
+                      </TableCell>
                       <TableCell>
                         R$ {aluno.valor_mensalidade?.toFixed(2) || "0.00"}
                       </TableCell>
