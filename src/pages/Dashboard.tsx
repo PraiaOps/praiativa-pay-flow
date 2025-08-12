@@ -888,20 +888,72 @@ const DashboardPage = () => {
       return;
     }
 
-    // Aqui você implementaria a geração real do código PIX
-    // Por agora, vou simular
-    const pixCode = `00020126580014BR.GOV.BCB.PIX0136${
-      instrutor?.chave_pix || "chavepix@exemplo.com"
-    }520400005303986540${aluno.valor_mensalidade?.toFixed(2)}5802BR5925${
-      instrutor?.nome || "Instrutor"
-    }6014Rio de Janeiro62070503***6304`;
+    try {
+      setLoading(true);
+      
+      console.log('=== DEBUG PIX PAYMENT ===');
+      console.log('Dados do aluno:', {
+        nome: aluno.nome,
+        email: aluno.email,
+        valor_mensalidade: aluno.valor_mensalidade,
+        atividade: aluno.atividade
+      });
+      
+      // Chama a Edge Function do Supabase para criar pagamento PIX no Mercado Pago
+      const { data, error } = await supabase.functions.invoke('create-pix-payment', {
+        body: {
+          amount: Math.round(aluno.valor_mensalidade * 100), // Mercado Pago usa centavos
+          description: `Mensalidade PIX - ${aluno.atividade}`,
+          student_name: aluno.nome,
+          student_email: aluno.email,
+          instructor_name: instrutor?.nome || '',
+          activity: aluno.atividade,
+          payment_amount: aluno.valor_mensalidade,
+          due_date: aluno.data_vencimento || '',
+          payer_email: aluno.email
+        }
+      });
 
-    toast({
-      title: "Código PIX Gerado!",
-      description: "Código copiado para a área de transferência",
-    });
+      console.log('Resposta da Edge Function PIX:', { data, error });
 
-    navigator.clipboard.writeText(pixCode);
+      if (error) throw error;
+
+      if (data?.success && data?.pix_code) {
+        // Copiar código PIX para área de transferência
+        await navigator.clipboard.writeText(data.pix_code);
+        
+        // Abrir link de pagamento se disponível
+        if (data.payment_url) {
+          window.open(data.payment_url, '_blank');
+        }
+        
+        const emailMessage = data.email_sent 
+          ? "Código PIX copiado, link de pagamento aberto e email enviado ao aluno!"
+          : "Código PIX copiado e link de pagamento aberto";
+        
+        toast({
+          title: "Pagamento PIX Gerado!",
+          description: emailMessage,
+        });
+
+        // Opcional: Mostrar QR Code se disponível
+        if (data.qr_code_base64) {
+          console.log('QR Code PIX gerado:', data.qr_code_base64);
+          // Aqui você pode implementar um modal para mostrar o QR Code
+        }
+      } else {
+        throw new Error('Falha ao gerar código PIX');
+      }
+    } catch (error: any) {
+      console.error('Erro ao gerar PIX:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao gerar pagamento PIX",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLogout = async () => {
